@@ -1,0 +1,208 @@
+---
+title: "Survey of GEO Melanoma Datasets"
+author: "Theo Killian"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library("tidyverse")
+library("DT")
+```
+
+# Introduction
+
+Melanoma is a highly aggressive form of skin cancer characterized by complex molecular heterogeneity and dynamic immune responses. As high-throughput sequencing technologies have advanced, numerous transcriptomic, genomic, and epigenomic datasets related to melanoma have been deposited in the [Gene Expression Omnibus (GEO)](https://www.ncbi.nlm.nih.gov/geo/), providing a rich resource for data-driven insights. These datasets encompass diverse experimental designs, including bulk RNA sequencing, single-cell transcriptomics, and spatial profiling, enabling researchers to investigate melanoma progression, immune microenvironment interactions, and therapeutic resistance. This survey aims to comprehensively catalog and analyze publicly available melanoma datasets on GEO, highlighting their experimental features, sample characteristics, and potential applications in data science approaches such as machine learning, network analysis, and biomarker discovery. By consolidating these resources, this review seeks to facilitate reproducible research and accelerate melanoma-focused computational studies.
+
+```{r}
+read.table(file = "./data/GEO_melanoma_datasets.tsv",
+           header = TRUE,
+           sep = "\t") %>%
+  as.data.frame() -> df
+```
+
+Below is a dynamic HTML table displaying all of the scraped information about melanoma datasets found on GEO:
+
+```{r}
+DT::datatable(df)
+```
+
+## Visualizations
+
+### Overview of Data Types in GEO Melanoma Datasets
+
+What it shows:
+
+    How many datasets exist for each type of assay (bulk RNA-seq, scRNA-seq, ChIP-seq, ATAC-seq, NanoString, etc.).
+    Quick snapshot of popular data modalities used in melanoma studies.
+    
+```{r message=FALSE, warning=FALSE}
+df %>%
+  dplyr::group_by(Data_Type) %>%
+  dplyr::summarize(n = n()) %>%
+  ggplot(aes(x = reorder(Data_Type, -n), y = n, fill = "Data_Type")) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(
+    title = "Number of Melanoma GEO Accession Datasets by Data Type",
+    x = "Data Type",
+    y = "Number of Datasets"
+  )
+```
+
+### Distribution of Number of Samples per Data Type in GEO Melanoma Datasets
+
+What it shows:
+
+    Variation in sample size across different omics modalities
+    Whether certain data types (e.g., bulk RNAseq) tend to have more/fewer samples on average than others
+
+```{r message=FALSE, warning=FALSE}
+df %>%
+  ggplot(aes(x = Data_Type, y = Number_of_Samples)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of Sample Sizes by Data Type",
+    x = "Data Type",
+    y = "Number of Samples") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+<!-- ### Highlighting the Completeness of Metadata Columns -->
+
+<!-- What it shows -->
+
+<!--     Which columns (e.g., `Target`, `Genomic_Reference`, `Cell_line`) are present vs. missing in each dataset. -->
+<!--     A quick way to see whether datasets tend to have certain attributes filled in or not. -->
+
+<!-- One way to do this is to pivot your data into a “long” format where each row indicates whether a particular field is “present” or “missing” for a given dataset. Then use a heatmap or tile plot to visualize completeness. -->
+
+<!-- ```{r message=FALSE, warning=FALSE} -->
+<!-- # Suppose the relevant columns are: "Target", "Cell_line", "Genomic_Reference" -->
+<!-- # Create a 'completeness' indicator (Present vs. Missing) -->
+<!-- df_long <- df %>% -->
+<!--   select(ID, Target, Cell_line, Genomic_Reference) %>% -->
+<!--   pivot_longer( -->
+<!--     cols = c(Target, Cell_line, Genomic_Reference), -->
+<!--     names_to = "Metadata_Field", -->
+<!--     values_to = "Value" -->
+<!--   ) %>% -->
+<!--   mutate(Completeness = ifelse(is.na(Value) | Value == "", "Missing", "Present")) -->
+
+<!-- # Now plot: -->
+<!-- ggplot(df_long, aes(x = Metadata_Field, y = ID, fill = Completeness)) + -->
+<!--   geom_tile(color = "white") + -->
+<!--   scale_fill_manual(values = c("Present" = "steelblue", "Missing" = "gray80")) + -->
+<!--   labs( -->
+<!--     title = "Metadata Completeness Overview", -->
+<!--     x = "Metadata Field", -->
+<!--     y = "Dataset ID" -->
+<!--   ) + -->
+<!--   theme(axis.text.x = element_text(angle = 45, hjust = 1)) -->
+<!-- ``` -->
+
+### Genomic References and Organism in GEO Melanoma Datasets
+
+What it shows:
+
+    The different reference genomes used (GRCh38, hg19, mm10, etc.)
+    The distribution of human vs. mouse (or other) models.
+
+**Takeaway: we will need to re-align all of the raw FASTQ files to the latest reference if we want to integrate all of these datasets**
+    
+```{r message=FALSE, warning=FALSE}
+df %>%
+  group_by(Organism, Genomic_Reference) %>%
+  summarize(n = n()) %>%
+  ggplot(aes(x = Organism, y = n, fill = Genomic_Reference)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Model Organisms and Reference Genomes in Melanoma Datasets",
+    x = "Organism",
+    y = "Number of Datasets",
+    fill = "Genomic Reference"
+  )
+```
+
+### Gene Target vs. Data Type in GEO Melanoma Datasets
+
+What it shows:
+
+    Whether particular targets (e.g., LSD1, NF1, HMGB2) are more frequently associated with certain experimental techniques.
+    Can reveal hotspots where certain gene targets have been studied more intensively with, say, ChIP-seq or scRNA-seq.
+
+```{r message=FALSE, warning=FALSE}
+df %>%
+  filter(Target != "") %>%  # or !is.na(Target) to remove missing
+  group_by(Data_Type, Target) %>%
+  summarize(n = n()) %>%
+  ggplot(aes(x = Data_Type, y = n, fill = Target)) +
+  geom_bar(stat = "identity", position = "stack") +
+  labs(
+    title = "Frequency of Targeted Factors by Data Type",
+    x = "Data Type",
+    y = "Number of Datasets"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+### Emphasizing Clinical vs. Preclinical in GEO Melanoma Datasets
+
+<!-- Because melanoma research often spans patient samples, cell lines, and mouse models, you might highlight that distinction visually. -->
+
+What it shows:
+
+    Bar chart of “patient samples” vs. “cell lines” vs. “mouse models” in a single facet.
+    Facet by Organism to see how many are from human vs. mouse in separate panels.
+    
+```{r message=FALSE, warning=FALSE}
+df %>%
+  mutate(Source = case_when(
+    grepl("patient", Cell_line, ignore.case = TRUE) | 
+      grepl("patient", Title, ignore.case = TRUE) ~ "Patient Sample",
+    Organism == "mouse" ~ "Mouse Model",
+    # fill in other patterns as needed
+    TRUE ~ "Cell Line/Other"
+  )) %>%
+  ggplot(aes(x = Data_Type, fill = Source)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ Organism) +
+  labs(
+    title = "Clinical vs Preclinical Sources by Organism and Data Type",
+    x = "Data Type",
+    y = "Number of Datasets"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### Number of Samples vs. Target or Data Type (Bubble Plot) in GEO Melanoma Datasets
+
+What it shows:
+
+    Where large-sample datasets exist, especially focusing on certain targets or data types.
+    Useful to quickly identify “big datasets” that might have deeper analytical potential.
+    
+```{r message=FALSE, warning=FALSE}
+df %>%
+  filter(!is.na(Target), Target != "") %>%
+  ggplot(aes(x = Data_Type, y = Target, size = Number_of_Samples)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    title = "Number of Samples per (Data Type, Target)",
+    x = "Data Type",
+    y = "Target",
+    size = "Number of Samples"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+    
+```{r}
+sessionInfo()
+```

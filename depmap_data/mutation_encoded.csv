@@ -1,0 +1,11 @@
+depmap_id,var_class,var_type,ref_allele,tumor_seq_allele1,is_deleterious,is_tcga_hotspot,is_cosmic_hotspot,cosmic_hsCnt,ExAC_AF,var_annotation,mutation_feature,allele_change
+ACH-000008,Missense_Mutation,SNP,C,G,0,0,0,0,2.481e-5,other non-conserving,RER1_chr1_2330949_2330949,C>G
+ACH-000008,Frame_Shift_Ins,INS,-,C,1,0,0,0,NA,damaging,PRDM16_chr1_3328424_3328425,->C
+ACH-000008,Silent,SNP,C,T,0,0,0,0,NA,silent,ESPN_chr1_6485138_6485138,C>T
+ACH-000008,Silent,SNP,C,T,0,0,0,0,NA,silent,MAD2L2_chr1_11740440_11740440,C>T
+ACH-000008,Missense_Mutation,SNP,C,T,0,0,0,0,1.647e-5,other non-conserving,TMCO4_chr1_20021022_20021022,C>T
+ACH-000008,Silent,SNP,T,G,0,0,0,0,NA,silent,SH2D5_chr1_21052476_21052476,T>G
+ACH-000008,Missense_Mutation,SNP,G,A,0,0,0,0,NA,other non-conserving,PUM1_chr1_31423006_31423006,G>A
+ACH-000008,Silent,SNP,G,A,0,0,0,0,8.237e-6,silent,PHC2_chr1_33832940_33832940,G>A
+ACH-000008,Missense_Mutation,SNP,T,G,0,0,0,0,NA,other non-conserving,CSMD2_chr1_34112346_34112346,T>G
+ACH-000008,Splice_Site,SNP,A,C,1,0,0,0,NA,damaging,CSMD2_chr1_34182100_34182100,A>C

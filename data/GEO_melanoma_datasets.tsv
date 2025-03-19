@@ -1,0 +1,84 @@
+ID	Number_of_Samples	Data_Type	Target	File_Type	Organism	Cell_line	Genomic_Reference	Title
+GSE287916	27	bulk RNAseq		txt	human	multiple	GRCh38	A melanoma mutation panel for individualized treatment of patient-derived melanoma cell cultures
+GSE288133	6	bulk RNAseq	HMGB2	tar	human	SKMEL5	GRCh38	Bulk RNA-sequencing of SKMEL5 human melanoma cells expressing nontargeting (NT) gRNA or gRNA targeting HMGB2.
+GSE271764	12	bulk RNAseq	COP1 and DET1	tar	human	A375	GRCh38	Inactivation of DET1 causes neurological defects and lethality in mice and humans I
+GSE280470	39	NanoString nCounter	Gli2	tar	human	patient samples		Gli2 Facilitates Tumor Immune Evasion and Immunotherapeutic Resistance by Coordinating Wnt Ligand and Prostaglandin Signaling
+GSE287090	12	scRNAseq		tar	human	patient samples	GRCh38	Exploration of tumor associated macrophages in patients with metastatic uveal melanoma by single cell RNAseq
+GSE288482	3	bulk RNAseq		csv	human	patient samples	hg38	Integration activity of evolutionarily recent human retroelements Alu and LINE in tumors
+GSE230489	33	bulk RNAseq		tsv	human	patient samples	GRCh38	RNA-sequencing of cutaneous melanoma and non-small cell lung cancer biopsies
+GSE256123	14	ChIPseq	LSD1	tar	human	A375		Lactylation of LSD1 is an acquired epigenetic vulnerability of BRAFi/MEKi-resistant melanoma [ChIP-seq]
+GSE285583	6	bulk RNAseq	NELFCD	txt	human	MUM2B	hg38	NELFCD: A Crucial Factor in Uveal Melanoma Cell Proliferation and Tumorigenesis
+GSE280739	21	bulk RNAseq		tar	human	multiple	GRCh38	Upregulation of the MBM CTC Signature and CTC:B Cell Clusters Associate with Secondary Liver Metastasis: a Melanoma Brain-Liver Metastasis Axis
+GSE277165	20	scRNAseq/scATACseq		10x	human	patient samples	GRCh38	Single-cell transcriptomics and epigenomics point to CD58/CD59-CD2 interactions in controlling primary melanoma growth and immunity
+GSE286964	1	Xenium		tar	human	patient		Somatic mutations distinguish melanocyte subpopulations in human skin
+GSE246603	22	bulk RNAseq		txt	human	GLO	GRCh38.p13	ZEB1 controls a lineage-specific transcriptional program essential for melanoma cell state transitions
+GSE253588	3	10X Visium		tar	human	Sentinel Lymph Node	GRCh38-3.0.0	A Lactate-induced SREBF2-dependent genetic program drives an immunotolerant dendritic cell population during cancer progression
+GSE253590	2	scRNAseq		tar	human	Sentinel Lymph Node	GRCh38-3.0.0	A Lactate-induced SREBF2-dependent genetic program drives an immunotolerant dendritic cell population during cancer progression
+GSE253593	2	scATACseq		tar	human	Sentinel Lymph Node	GRCh38-3.0.0	A Lactate-induced SREBF2-dependent genetic program drives an immunotolerant dendritic cell population during cancer progression
+GSE250636	9	10X Visium		tar	human	Melanoma leptomeningeal metastasis	GRCh38-2020-A	Spatial transcriptomics analysis identifies a unique tumor-promoting function of the meningeal stroma in melanoma leptomeningeal disease.
+GSE231936	6	bulk RNAseq	CANT2	tar	human	A375	GRCh38	Prohibitin 2 orchestrates transcription of long noncoding RNA and coding gene to accelerate tumorigenesis
+GSE275395	30	bulk RNAseq		tar	human	A375	hg19	Deciphering Pre-existing and Induced 3D Genome Architecture Changes involved in Constricted Melanoma Migration
+GSE275396	8	Hi-C		tar	human	A375	hg19	Deciphering Pre-existing and Induced 3D Genome Architecture Changes involved in Constricted Melanoma Migration
+GSE245467	42	bulk RNAseq		xlsx	human	patient samples	hg38	Immunogenomics and spatial proteomic mapping highlight distinct neuro-immune architectures in melanoma vs. non-melanoma-derived brain metastasis
+GSE268426	2	scRNAseq/snRNAseq		tar	human	patient samples	hg38	snPATHO-seq: unlocking the FFPE archives for single nucleus RNA profiling [snRNA-seq]
+GSE255328	43	bulk RNAseq		xlsx	human	patient samples		TNF-α released by melanoma liver metastasis activates AKT and NFKβ1 pathways to promote collagen type I secretion by hepatocytes
+GSE271422	3	10X Genomics Visium		tar	human	patient samples	GRCh38-2020-A	spatialGE is a User-Friendly Web Application that Facilitates Spatial Transcriptomics Data Analysis
+GSE280936	8	bulk RNAseq		xlsx	human	OMM2.3	hg38	Erianin abrogates vasculogenic mimicry through targeting m5C methylase NSUN2
+GSE179373	21	scRNAseq		tar	human	patient samples	GRCh38	Single cell RNA-sequencing of human brain metastasis-infiltrating T cells
+GSE179572	1	10X Visium		tar	human	patient samples	GRCh38	Spatial transcriptomics of human brain metastases
+GSE158562	28	Pick-Seq		csv	human	patient samples	GRCh38	Spatial transcriptomics of fixed tissue micro-regions using Pick-Seq
+GSE200904	341	NanoString nCounter	NF1	xlsx	human	patient samples		NanoString nCounter NF1-mutant melanoma gene expression
+GSE200278	16	SlideSeq		tar	human	patient samples	GRCh38	Melanoma Brain Metastasis Atlas
+GSE200217	24	bulk RNAseq		tar	human	patient samples	GRCh38	Melanoma Brain Metastasis Atlas
+GSE200218	32	scRNAseq/snRNAseq		tar	human	patient samples	GRCh38	Melanoma Brain Metastasis Atlas
+GSE205033	24	bulk ATACseq		tar	human	patient samples	GRCh38	Melanoma Brain Metastasis Atlas
+GSE207592	25	scRNAseq and bulk RNAseq		tar	human	primary tumor	hg19	A cellular hierarchy in melanoma uncouples growth and metastasis
+GSE203612	31	scRNAseq and 10X Visium		tar	human	patient-derived xenograft	hg38, mm10	Cancer cell states recur across tumor types and form specific interactions with the tumor microenvironment
+GSE216055	2	SlideSeq		csv	human	patient samples	GRCh38	Multi-modal single-cell and whole-genome sequencing of minute, frozen specimens to propel clinical applications
+GSE216069	71	scRNAseq/snRNAseq		csv	human	patient samples	GRCh38	Multi-modal single-cell and whole-genome sequencing of minute, frozen specimens to propel clinical applications
+GSE210747	10	scRNAseq/scATACseq		tar	mouse	mouse cortex	mm10	SCENIC+: identification of enhancers and gene regulatory networks using single-cell multiomics
+GSE210745	2	scATACseq		tar	human	MM031, MM074, MM047 and MM029	GRCh38	SCENIC+: identification of enhancers and gene regulatory networks using single-cell multiomics
+GSE253801	6	bulk RNAseq	HMGB2	tar	human	A375	GRCh38	Mechanical confinement governs phenotypic plasticity in melanoma
+GSE253802	6	bulk ATACseq	HMGB2	tar	human	A375	GRCh38	Mechanical confinement governs phenotypic plasticity in melanoma
+GSE288133	6	bulk RNAseq	HMGB2	tar	human	SKMEL5	GRCh38	Mechanical confinement governs phenotypic plasticity in melanoma
+GSE253800	6	bulk RNAseq	HMGB2	tar	human	A375	GRCh38	Mechanical confinement governs phenotypic plasticity in melanoma
+GSE221553	22	scRNAseq		tar	human	patient samples	GRCh38	Response to tumor- infiltrating lymphocyte adoptive therapy is associated with preexisting CD8+T- myeloid cell networks in melanoma
+GSE221253	26	bulk RNAseq		txt	human	patient samples	GRCh38	Response to tumor- infiltrating lymphocyte adoptive therapy is associated with preexisting CD8+T- myeloid cell networks in melanoma
+GSE222446	22	scRNAseq		tar	human	patient samples	GRCh38	Response to tumor- infiltrating lymphocyte adoptive therapy is associated with preexisting CD8+T- myeloid cell networks in melanoma
+GSE244982	41	bulk RNAseq		txt	human	patient samples	hg38	Molecular patterns of resistance to immune checkpoint blockade in melanoma
+GSE244983	4	scRNAseq		txt	human	patient samples	hg38	Molecular patterns of resistance to immune checkpoint blockade in melanoma
+GSE261347	33	NanoString GeoMx		txt	human	patient samples		Molecular patterns of resistance to immune checkpoint blockade in melanoma
+GSE221390	8	10X Visium		tar	human	patient samples	GRCh38p10	Comparative skin cancer atlas and interactome: A multi-modal spatial approach to uncovering the cells and interactions underlying skin cancer diversity
+GSE233305	449	Nanostring GeoMx		xlsx/tar	human	multiple		Spatially informed gene signatures for response to immunotherapy in Melanoma
+GSE254918	3	scRNAseq		txt	human	Acral lentiginous melanoma	hg19	CAF variants control the tumor-immune microenvironment and predict skin cancer malignancy
+GSE58953	144	ChIPseq		BED	human	HMEL		Epigenomic Analysis Reveals Chromatin States and Regulators Associated with Melanoma Progression
+GSE158803	1	scRNAseq		tar	human	patient samples	GRCh38-3.0.0	A Single-Cell Tumor Immune Atlas for Precision Oncology
+GSE168013	325	Nanostring GeoMx		txt/tar	human	patient samples		High-plex spatial RNA profiling reveals cell type-specific biomarker expression during melanoma development
+GSE256291	3	scRNAseq		tar	human	patient samples	GRCh38	Comparing transcriptional profiles of CD14+ monocytes from melanoma patients and healthy donors by scRNA-seq
+GSE272993	360	scRNAseq		tar	human	PBMCs	GRCh38-2020-A	Combination anti-PD-1 and anti-CTLA-4 therapy generates waves of clonal responses that include progenitor-exhausted CD8 T cells
+GSE270976	18	bulk RNAseq		csv	human	M405  xenograft	GRCh38	selenocysteine tRNA methylation promotes oxidative stress resistance in melanoma metastasis
+GSE261023	3	scRNAseq/scATACseq		tar	human	patient samples	GRCh38	Tumor-reactive T cell clonotype dynamics underlying clinical response to TIL therapy in melanoma
+GSE275929	58	scRNAseq		tar	human	patient samples	hg38	Immune niches in brain metastases contain TCF1+ stem-like T cells, are associated with disease control and are modulated by preoperative SRS
+GSE277569	7	scRNAseq		tar	human	patient-derived organotypic tumor spheroids	GRCh38	Evaluating Novel Therapeutic Strategies to Enhance CAR-T Cell Efficacy Using Patient-Derived Organotypic Tumor Spheroids
+GSE279162	9	scRNAseq		tar	human	WM989	hg38	Pre-existing cell states predict resistance to multiple treatments
+GSE268364	24	scRNAseq		10x	human	PBMCs	GRCh38	Cyotoxicity in CD8+ T cells differs among adjuvant immune checkpoint blockade therapie
+GSE262779	10	bulk RNAseq		txt	human	M150543	GRCh38 release 105	Monitoring of melanoma patients on treatment reveals a distinct macrophage population driving targeted therapy resistance
+GSE247684	6	scRNAseq		csv/tsv	human	A375	hg38/GRCh38	Cellular adaptation to cancer therapy along a resistance continuum
+GSE213326	16	ChIPseq		tar	human	A375	GRCh38	A chronic signaling TGFb zebrafish reporter identifies immune response in melanoma
+GSE213327	6	bulk RNAseq		txt	human	A375	GRCh38	A chronic signaling TGFb zebrafish reporter identifies immune response in melanoma
+GSE217707	10	scRNAseq		tar	human	patient samples	GRCh38	Single-cell sequencing analysis reveals the tissue architecture and empowers clinical trial in advanced conjunctival melanoma
+GSE243238	20	bulk RNAseq		csv	human	acral melanoma patient samples	GRCh38	Identification of tumor-intrinsic drivers of immune exclusion in acral melanoma
+GSE227001	12	scRNAseq		10x	human	PBMCs	GRCh38	Multiomics analysis of immune-related adverse events in melanoma patients treated with immune checkpoint inhibitors
+GSE229908	14	scRNAseq		10x	human	patient samples	GRCh38	Monitoring melanoma patients on treatment reveals a distinct macrophage population driving targeted therapy resistance
+GSE220731	48	bulk RNAseq		tsv	mouse	NMM	GRCm38	Distinct spatiotemporal dynamics of CD8+ T cell-derived cytokines in the tumor microenvironment (5892)
+GSE246621	29	bulk RNAseq		tsv	mouse	NMM	GRCm38	Distinct spatiotemporal dynamics of CD8+ T cell-derived cytokines in the tumor microenvironment (5892)
+GSE220737	2	scRNAseq		10x	mouse	NMM	GRCm38	Distinct spatiotemporal dynamics of CD8+ T cell-derived cytokines in the tumor microenvironment (5892)
+GSE230864	39	bulk RNAseq		csv	human	patient samples	GRCh38	Re-evaluating the melanoma TIL compartment and its unexpected spectrum of exhausted and functional T cells
+GSE210963	3	scRNAseq		10x	human	PBMCs	hg38	Single-Cell RNA-Seq Analysis of Patient Myeloid-Derived Suppressor Cells and the Response to Inhibition of Bruton’s Tyrosine Kinase
+GSE222258	9	scRNAseq		10x	human	human NRAS-mutated melanoma PDX in mice	hg38	Metabolic targeting as a strategy to overcome targeted therapy resistance in NRAS-mutated melanoma
+GSE232760	3	scRNAseq		10x	human	A375	grch38-2020	Single-cell genomics analysis reveals complex genetic interactions in an in vivo model of acquired BRAF inhibitor resistance.
+GSE255299	96	scRNAseq		10x	human	patient CTCs	GRCh38	Single-Cell Identification of Melanoma Biomarkers in Circulating Tumor Cells
+GSE249909	1	scRNAseq		tar	human	Metastatic melanoma	GRCh38	MCL1 inhibition targets Myeloid Derived Suppressors Cells, promotes antitumor immunity and enhances the efficacy of immune checkpoint blockade
+GSE248838	15	scRNAseq		10x	human	T-cells	GRCh38-2020-A	Divergent local and systemic antitumor response in primary uveal melanomas
+GSE252781	13	bulk RNAseq		txt	human	M397	hg19	Temporal dynamics of signaling and transcription underlying early adaptation to oncogenic BRAF inhibition in melanoma
+GSE246923	4	scRNAseq		10x	mouse	IFNAR-mice and IRF1KO-tumor	mm10	Opposing tumor cell-intrinsic and -extrinsic roles of the IRF1 transcription factor in anti-tumor immunity
