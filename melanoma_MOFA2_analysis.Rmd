@@ -1,0 +1,323 @@
+---
+title: "MOFA2 Analysis of DepMap MultiAssayExperiment"
+author: "Theo Killian"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+---
+
+```{r, echo = FALSE, results = 'asis'}
+suppressPackageStartupMessages(library("dplyr"))
+knitr::opts_chunk$set(collapse=TRUE, comment="#>", warning=FALSE, message=FALSE)
+```
+
+# Introduction
+
+The **Cancer Dependency Map (DepMap)** is a large-scale collaborative project aimed at characterizing the genetic and molecular vulnerabilities of cancer. By systematically profiling hundreds of cancer cell lines across multiple omics platforms—including gene expression, proteomics, DNA methylation, copy number alterations, mutations, and genetic perturbation screens (e.g., CRISPR)—DepMap provides a rich resource for understanding the molecular basis of cancer dependencies and identifying therapeutic targets.
+
+To fully harness the potential of such diverse data types, **multi-omics integration** is essential. This process involves combining information from various molecular layers to obtain a holistic view of biological systems. Integration enables the identification of cross-platform relationships, reveals shared latent structures, and improves the interpretability of complex datasets.
+
+**Multi-Omics Factor Analysis version 2 (MOFA2)** is an unsupervised machine learning framework specifically designed for the integration of multi-modal biological data. MOFA2 models the sources of variability across different omic layers by learning a set of latent factors that capture the underlying structure of the data. These factors can be used to uncover biologically meaningful patterns, perform dimensionality reduction, visualize sample relationships, and cluster samples based on shared molecular features.
+
+In this document, we use MOFA2 to analyze a curated `MultiAssayExperiment` object derived from DepMap melanoma cell lines. By integrating multiple omics assays, we aim to uncover latent molecular programs, identify clusters of similar cell lines, and explore the biological variance captured across platforms.
+
+*In the sections that follow, readers can expect to find:*
+
+- **Step-by-step preprocessing and alignment** of multiple omics layers, ensuring that data from all assays are harmonized and suitable for integration.
+
+- **Construction and training of a MOFA2 model**, capturing sources of variance across omics platforms without the use of prior labels or supervision.
+
+- **Interpretation of latent factors**, including variance explained by each factor and feature-level contributions (weights) that highlight genes, proteins, or epigenetic features driving molecular programs.
+
+- **Visualization of cell line relationships in latent space**, using clustering and dimensionality reduction to identify subgroups of melanoma lines with shared molecular features.
+
+- **Evaluation of biological associations**, where latent factors are correlated with sample-level annotations such as metastatic status or other metadata, demonstrating how MOFA2 can facilitate hypothesis generation.
+
+- **Practical guidance** on how to extract and interpret key outputs of the MOFA2 model, including factor scores, feature weights, and cluster assignments.
+
+This document is designed for researchers interested in applying **unsupervised integrative modeling** to complex biological datasets. It balances methodological rigor with interpretable outputs, providing a template for multi-omics exploration in cancer genomics and beyond.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library("GenomicRanges")
+library("IRanges")
+library("MultiAssayExperiment")
+library("SummarizedExperiment")
+library("S4Vectors")
+library("dplyr")
+library("Matrix") 
+library("MOFA2")
+library("ggplot2")
+library("parallel")  # For multi-core detection
+library("reticulate")
+library("ExperimentHub")
+library("depmap")
+
+# Set Python environment
+use_python("/usr/bin/python3")  # Specify your Python path if needed
+```
+
+## Step 1: Load Data
+
+We load the preprocessed `MultiAssayExperiment` object saved as a RDS file, which
+was constructed in the previous `make_depmap_melanoma_MAE.R` script.
+
+```{r}
+depmap_mae <- readRDS(file = paste0("./MAE/depmap_MAE_2025-03-18.rds"))
+
+assays(depmap_mae)
+```
+
+The `MultiAssayExperiment` used in this analysis integrates multiple molecular profiling datasets from melanoma cell lines in the DepMap resource. Below is a description of the key assays included, along with details on how each was pre-processed to support effective multi-omics integration using MOFA2.
+
+* The **CRISPR** assay captures gene dependency scores derived from genome-scale CRISPR-Cas9 knockout screens. Each value reflects the extent to which a given gene is essential for the survival of a particular cell line. The data have been centered and scaled across cell lines to ensure comparability across genes and to reduce the influence of technical biases.
+
+* The **copy_number** assay contains gene-level log2 copy number ratios obtained from DNA-based profiling. These values indicate gains or losses of genomic regions. Prior to integration, the data were centered (mean-subtracted) and scaled (standard deviation normalized) across samples, standardizing the dynamic range for downstream modeling.
+
+* The **tpm_exp** assay represents transcriptome-wide gene expression levels measured in Transcripts Per Million (TPM). As raw expression data can vary widely in scale and variance, log-transformation was first applied, followed by centering and scaling per gene across all cell lines to improve comparability between expression patterns.
+
+* The **proteomic** assay includes relative protein abundance levels measured using mass spectrometry-based proteomics. Since protein quantification can be influenced by batch effects and variation in detection sensitivity, these data were also centered and scaled per protein across samples to normalize across the dynamic range of detection.
+
+* The **methylation** assay provides average beta values summarizing DNA methylation status across promoter regions. Methylation values range between 0 (unmethylated) and 1 (fully methylated), but were transformed via a logit function to better suit linear modeling assumptions. The transformed values were then centered and scaled to match the preprocessing pipeline of the other assays.
+
+### Note on Preprocessing for Multi-Omics Integration
+To enable coherent multi-omics factor analysis, each assay was pre-processed using a consistent strategy:
+- **Centering** (subtracting the mean) removes assay-specific baseline shifts.
+- **Scaling** (dividing by standard deviation) brings all features to a comparable range, which is critical for unbiased learning of latent factors.
+
+This standardized preprocessing ensures that no single assay or data modality dominates the MOFA2 model due to scale differences, allowing balanced integration of diverse molecular signals across the dataset.
+
+## Step 2: Prepare Data for MOFA2, Align samples across assays
+
+This step prepares the metadata and sample annotations across the assays, which
+will be used at a later step in the analysis.
+
+```{r}
+depmap_mae <- intersectColumns(depmap_mae)
+
+# Convert assay data into sparse matrices for efficiency
+convert_to_matrix <- function(se_object) {
+  assay_data <- assay(se_object)
+  if (is(assay_data, "dgCMatrix")) {
+    return(as.matrix(assay_data))  # Convert sparse matrices to dense matrices for MOFA2
+  } else if (is.data.frame(assay_data)) {
+    return(as.matrix(assay_data))  # Convert data.frame to matrix
+  } else {
+    return(assay_data)  # Already in matrix format
+  }
+}
+
+# Extract and format the assays
+mofa_data <- lapply(experiments(depmap_mae), convert_to_matrix)
+
+# Confirm all elements are now sparse matrices
+str(mofa_data)
+```
+
+## Step 3: Create and Train the MOFA2 Model, Create MOFA object
+
+```{r}
+mofa_model <- create_mofa(mofa_data)
+
+# Define model and training options
+data_opts <- get_default_data_options(mofa_model)
+model_opts <- get_default_model_options(mofa_model)
+train_opts <- get_default_training_options(mofa_model)
+
+# Performance Improvements
+train_opts$maxiter <- 1000                   # Increase iterations for convergence
+
+# Train the MOFA model
+mofa_model <- prepare_mofa(mofa_model,
+                           data_options = data_opts, 
+                           model_options = model_opts, 
+                           training_options = train_opts)
+
+mofa_model <- run_mofa(mofa_model, use_basilisk = TRUE)
+```
+
+#### Interpreting MOFA2 Factor Weights
+
+In MOFA2, **factor weights** quantify how strongly each feature (e.g., gene, protein, or methylation site) contributes to a given latent factor in a specific omic view. These weights are learned during model training and are analogous to loadings in principal component analysis (PCA), but tailored for multi-modal data. A high absolute weight indicates that the feature plays a major role in defining the factor’s structure, while weights close to zero suggest minimal influence. The sign of the weight (positive or negative) reflects the direction of association: features with positive weights tend to increase in samples with high factor scores, whereas features with negative weights decrease. By examining the distribution and magnitude of weights, researchers can identify key drivers of latent variability across assays, uncover coordinated biological programs, and generate hypotheses about regulatory mechanisms underlying specific molecular patterns. Visualizations such as weight plots or ranked feature lists enable further biological interpretation of the most influential features for each factor.
+
+## Step 4: Visualize Results, Visualize variance explained by each factor
+
+### Plot the top latent factors
+
+```{r message=FALSE, warning=FALSE}
+plot_factors(mofa_model, factors = 1:5)
+```
+### Heatmap displaying the variance of latent factors between omics assays
+
+```{r}
+plot_variance_explained(mofa_model)
+```
+
+#### Closer look at the weights in the Copy Number omics assay
+
+The heatmap shown above appears to show that there is high variance between copy number within the first latent factor. Let's look at these weights directly: 
+
+```{r}
+get_weights(mofa_model, view = "copy_number") %>% as.data.frame() %>% 
+  dplyr::slice(1:20)
+```
+#### Interpreting Positive versus Negative Weights
+
+##### Positive Weights
+
+A **positive weight** for a gene in a given factor means that **increased copy number** of that gene is **positively associated** with higher scores on that latent factor.
+
+**Example:**
+
+- `COL6A2_copy_number` has a positive weight of **0.530** on **Factor1**.
+  - This suggests that samples (e.g., cell lines) with high scores on Factor1 tend to have **increased copy number of COL6A2**.
+
+##### Negative Weights
+
+A **negative weight** implies the opposite: **increased copy number** of the feature is associated with **lower values** on that factor.
+
+**Example:**
+
+- `RNU7-179P` has a weight of **-0.412** on **Factor1**.
+  - So samples with high scores on Factor1 tend to have **lower copy number of RNU7-179P**, or conversely, **high copy number of RNU7-179P pushes the factor score down**.
+
+##### Zero or Near-Zero Weights
+
+Weights close to zero suggest that the feature has **little or no influence** on that factor.
+
+These features contribute minimally and are typically **not interpreted** in downstream analyses.
+
+```{r}
+plot_weights(mofa_model, view = "copy_number", factor = 1)
+```
+
+## Step 5: Cluster and Analyze the Latent Space, Extract factor scores
+
+```{r}
+factor_scores <- get_factors(mofa_model)[[1]]
+
+factor_scores %>% as.data.frame() %>% 
+  dplyr::slice(1:20)
+```
+
+### Perform k-means clustering
+
+```{r}
+set.seed(42)
+kmeans_clusters <- kmeans(factor_scores, centers = 3)
+```
+
+### Visualize clusters
+
+```{r}
+eh <- ExperimentHub()
+query(eh, "depmap")
+eh[["EH7558"]] %>%
+  dplyr::filter(grepl("melanoma", lineage_subtype) |
+                  grepl("elanoma", Cellosaurus_NCIt_disease) |
+                  grepl("elanoma", subtype_disease) | 
+                  grepl("elanoma", cell_line)) %>%
+  dplyr::select(-contains("issues")) %>%
+  as.data.frame() -> melanoma_metadata_22Q2
+
+data.frame(factor_scores, Cluster = factor(kmeans_clusters$cluster)) %>% 
+  tibble::rownames_to_column(var = "depmap_id") %>% 
+  dplyr::left_join(melanoma_metadata_22Q2, by = "depmap_id") %>%
+  dplyr::mutate(
+    primary_or_metastasis = tidyr::replace_na(primary_or_metastasis, "unknown"),
+    primary_or_metastasis = as.factor(primary_or_metastasis)) %>%
+  tibble::column_to_rownames(var = "depmap_id") %>%
+  as.data.frame() -> factor_df
+```
+
+```{r}
+ggplot(factor_df, aes(x = Factor1, y = Factor2, color = Cluster)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "MOFA Latent Space Clustering by Latent Factor")
+```
+
+```{r}
+ggplot(factor_df, aes(x = Factor1, y = Factor2, color = primary_or_metastasis)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "MOFA Latent Space Clustering by Metastatic Status")
+```
+
+```{r}
+ggplot(factor_df, aes(x = Factor1, y = Factor2, color = sex)) +
+  geom_point() +
+  theme_minimal() +
+  labs(title = "MOFA Latent Space Clustering by Sex")
+```
+
+## Check Whether a Factor Separates Your Classes
+
+After training, we retrieve the latent factor scores (sample-level) and examine
+whether any factor (or combination of factors) correlates with the `primary` versus
+`metastatic` annotations. 
+
+**Note:** *While there doesn't appear to be a significant correlation between primary versus metastatic samples, this demonstrates how such a a correlation can be performed.*
+
+```{r}
+factor_scores <- get_factors(mofa_model)
+# factor_scores is usually a list of matrices, one per view or combined
+
+as.data.frame(factor_scores[[1]][, "Factor2"]) %>% 
+  tibble::rownames_to_column(var = "depmap_id") %>%
+  dplyr::left_join(melanoma_metadata_22Q2, by = "depmap_id") %>% 
+  dplyr::mutate(primary_metastatic_label =  ifelse(primary_or_metastasis == "Metastasis", 1, 0),
+                primary_metastatic_label = tidyr::replace_na(primary_metastatic_label, 0)) %>%
+  dplyr::rename(factor_scores_1 = names(.)[2]) %>%
+  as.data.frame() -> factor_metastasis
+
+# For instance, see if Factor1 is associated with your annotation:
+cor.test(factor_metastasis$factor_scores_1, as.numeric(factor_metastasis$primary_metastatic_label))
+```
+
+## Retrieve factor weights for that factor
+
+Assuming that the factor scores for our factor of interest (`Factor2`) were in
+fact significant, 
+
+```{r}
+# For example, for copy number
+get_weights(mofa_model, view = "copy_number") %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "feature") %>% 
+  dplyr::mutate(abs_val = abs(copy_number.Factor2)) %>%
+  dplyr::filter(grepl("copy_number", feature)) %>%
+  dplyr::arrange(desc(abs_val)) -> weights_df
+
+weights_df %>% head(20)
+```
+
+## Summary
+
+In this analysis, we applied **MOFA2** to a multi-omics dataset derived from the **DepMap melanoma cell lines**, organized as a `MultiAssayExperiment` object. The following steps summarize the workflow:
+
+1. **Data Loading and Preprocessing**:  
+   We loaded a previously saved `MultiAssayExperiment` object containing matched multi-omic profiles from DepMap. The samples were aligned across all assays using `intersectColumns()` to ensure consistent sample identifiers.
+
+2. **Data Formatting for MOFA2**:  
+   Each assay was extracted and converted into a dense matrix format suitable for MOFA2. This step ensures compatibility across omic layers and maximizes computational efficiency.
+
+3. **Model Creation and Training**:  
+   A MOFA2 model was initialized with the prepared data. Default options were used for data, model, and training configurations, with an increased maximum number of iterations to improve convergence. The model was trained using the `run_mofa()` function with basilisk for environment management.
+
+4. **Variance and Factor Visualization**:  
+   We examined the variance explained by each latent factor to assess how much structure MOFA2 captures from each omic layer. Latent factor plots provided a 2D representation of the samples in the reduced space, and weight plots highlighted features contributing most to each factor.
+
+5. **Clustering in Latent Space**:  
+   Factor scores extracted from the trained model were used for unsupervised clustering via k-means. The resulting clusters were visualized using a scatter plot of the first two latent factors, revealing distinct groupings among the melanoma cell lines.
+
+Overall, this analysis demonstrates how MOFA2 can be effectively applied to integrated DepMap data to identify latent patterns and uncover molecular subtypes across cancer cell lines using multi-omics integration.
+
+6. **Analyzing Latent Space Weights**
+  We demonstrated how to correlate and interpret MOFA2 latent space weights and connect them to annotations.  
+
+```{r}
+sessionInfo()
+```

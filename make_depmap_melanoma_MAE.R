@@ -1,31 +1,24 @@
 ## Create MultiAssayExperiment object from current MELANOMA Depmap datasets
 
-## TODO:
-# 0) MAE https://www.bioconductor.org/packages/devel/bioc/vignettes/MultiAssayExperiment/inst/doc/QuickStartMultiAssay.html#transformation-reshaping
-# 1) you need to download the original "square" omics matrices from Depmap: 
-# https://depmap.org/portal/data_page/?tab=allData
-# https://plus.figshare.com/articles/dataset/DepMap_24Q1_Public/27993248/1
-# 2) are Regulatory or inhibitory compounds that effect of m6A modifications in the drug screen data?
-
-if (!requireNamespace("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-
-BiocManager::install(c("MultiAssayExperiment", 
-                       "SummarizedExperiment",
-                       "ExperimentHub", 
-                       "depmap", 
-                       "Matrix", 
-                       "MOFA2",
-                       "ggplot2",
-                       "dplyr",
-                       "tidyr",
-                       "tibble",
-                       "readr",
-                       "GenomicRanges",
-                       "IRanges",
-                       "S4Vectors",
-                       "reticulate",
-                       "parallel"), force = FALSE)
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# 
+# BiocManager::install(c("MultiAssayExperiment", 
+#                        "SummarizedExperiment",
+#                        "ExperimentHub", 
+#                        "depmap", 
+#                        "Matrix", 
+#                        "MOFA2",
+#                        "ggplot2",
+#                        "dplyr",
+#                        "tidyr",
+#                        "tibble",
+#                        "readr",
+#                        "GenomicRanges",
+#                        "IRanges",
+#                        "S4Vectors",
+#                        "reticulate",
+#                        "parallel"), force = FALSE)
 
 library("S4Vectors")
 library("caret")
@@ -47,15 +40,14 @@ Sys.setenv(VROOM_CONNECTION_SIZE = 2000000L)
 
 ## output file path
 # file_path <- "media/seq-srv-05/vrc/Project/Project_Theo" ## server
-file_path <- "~/tmp/circadian_melanoma/depmap_data/" ## local
+file_path <- "~/tmp/circadian_melanoma/MAE/" ## local
 
 #################### depmap `metadata_22Q2` dataset ############################
 # NOTE: the most current depmap release doesn't appear to have a "metadata" file
 # as with previous releases, therefore, we will rely on this file for now.
 eh <- ExperimentHub()
 query(eh, "depmap")
-metadata <- eh[["EH7558"]]
-metadata %>%
+eh[["EH7558"]] %>%
   dplyr::filter(grepl("melanoma", lineage_subtype) |
                   grepl("elanoma", Cellosaurus_NCIt_disease) |
                   grepl("elanoma", subtype_disease) | 
@@ -63,6 +55,11 @@ metadata %>%
   dplyr::select(-contains("issues")) %>%
   as.data.frame() -> melanoma_metadata_22Q2
 rownames(melanoma_metadata_22Q2) <- melanoma_metadata_22Q2$depmap_id
+
+# melanoma_metadata_22Q2 %>% 
+#   as_tibble() %>% 
+#     dplyr::slice(1:10) %>%
+#     write_csv(file = paste0("~/tmp/circadian_melanoma/MAE/meta_test.csv"))
 
 ######################## depmap dep_2_name  ####################################
 ### `dep_2_name` to add `depmap_id` or `cell_line` to other datasets
@@ -118,8 +115,8 @@ rm(copyNumber_24Q1_mat)
 #   as.data.frame() -> TPM_22Q2_mat
 # View(TPM_22Q2_mat)
 
-eh <- ExperimentHub()
-query(eh, "depmap")
+# eh <- ExperimentHub()
+# query(eh, "depmap")
 eh[["EH7556"]] %>%
   dplyr::filter(depmap_id %in% melanoma_metadata_22Q2$depmap_id) %>% ## only melanoma cell lines!
   dplyr::select(depmap_id, rna_expression, gene_name) %>%
@@ -129,6 +126,11 @@ eh[["EH7556"]] %>%
   tibble::column_to_rownames(var = "gene_name") %>%
   scale(center = TRUE, scale = TRUE) %>%
   as.data.frame() -> TPM_22Q2_mat
+
+# TPM_22Q2_mat %>% 
+#   tibble::rownames_to_column(var = "gene_name") %>% 
+#   dplyr::slice(1:10) %>% 
+#   write_csv(file = paste0("~/tmp/circadian_melanoma/MAE/tmp_test.csv"))
 
 # TPM_names <- names(TPM_22Q2_mat) ## store names
 
@@ -141,8 +143,8 @@ rm(TPM_22Q2_mat)
 
 ##################### depmap `RPPA_19Q3` dataset ###############################
 ## download the 19Q3 metadata
-eh <- ExperimentHub()
-query(eh, "depmap")
+# eh <- ExperimentHub()
+# query(eh, "depmap")
 eh[["EH3086"]] -> metadata_19Q3
 metadata_19Q3 %>% dplyr::select(depmap_id, cell_line) -> dep_2_name_19Q3
 
@@ -238,7 +240,7 @@ rm(proteomic_20Q2_mat)
 
 ############################ methylation dataset ###############################
 readr::read_csv(
-  paste0("~/tmp/circadian_melanoma/depmap_data/Methylation_(1kb_upstream_TSS)_subsetted_NAsdropped.csv")) %>%
+  paste0("~/tmp/circadian_melanoma/MAE/Methylation_(1kb_upstream_TSS)_subsetted_NAsdropped.csv")) %>%
   dplyr::rename(depmap_id = names(.)[1]) %>%
   dplyr::filter(depmap_id %in% melanoma_metadata_22Q2$depmap_id) %>% ## only melanoma cell lines!
   tibble::column_to_rownames(var = "depmap_id") %>%
@@ -663,3 +665,10 @@ MultiAssayExperiment::MultiAssayExperiment(
 
 ## save depmap MAE
 saveRDS(depmap_mae, file = paste0(file_path, "depmap_MAE_", Sys.Date(), ".rds"))
+
+## TODO:
+# 0) MAE https://www.bioconductor.org/packages/devel/bioc/vignettes/MultiAssayExperiment/inst/doc/QuickStartMultiAssay.html#transformation-reshaping
+# 1) you need to download the original "square" omics matrices from Depmap: 
+# https://depmap.org/portal/data_page/?tab=allData
+# https://plus.figshare.com/articles/dataset/DepMap_24Q1_Public/27993248/1
+# 2) are Regulatory or inhibitory compounds that effect of m6A modifications in the drug screen data?

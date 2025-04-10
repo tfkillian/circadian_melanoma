@@ -1,0 +1,790 @@
+---
+title: "Circadian Phase Estimation of Depmap Melanoma Cell Line Samples"
+author: "Theo Killian"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+---
+
+```{r, echo = FALSE, results = 'asis'}
+suppressPackageStartupMessages(library("dplyr"))
+knitr::opts_chunk$set(collapse=TRUE, comment="#>", warning=FALSE, message=FALSE)
+```
+
+```{r libraries, echo=FALSE, message=FALSE, warning=FALSE}
+library("dplyr")
+library("tidyr")
+library("tibble")
+library("ggplot2")
+library("viridis")
+library("stringr")
+library("ggrepel")
+library("ggpubr")
+library("readxl")
+library("depmap")
+library("ExperimentHub")
+# library("biomaRt")
+# library("plotly")
+# library("pheatmap")
+# library("DT")
+# https://plus.figshare.com/articles/dataset/DepMap_24Q4_Public/27993248/1?file=51065732
+# https://bioconductor.org/packages/devel/data/experiment/vignettes/depmap/inst/doc/using_depmap.html
+my_cols <- c("#0D0887FF", "#6A00A8FF", "#B12A90FF", "#E16462FF", "#FCA636FF", "#F0F921FF")
+```
+
+# Introduction
+
+In circadian biology, estimating the circadian phase of biological samples provides insight into the temporal regulation of gene expression. However, in many publicly available datasets, particularly large-scale cancer cell line resources like DepMap, samples are not annotated with the time of day at which they were collected, making it challenging to infer rhythmic patterns.
+
+Despite this limitation, we may still wish to explore whether circadian rhythms persist in these in vitro systems and whether they correlate with key biological or clinical variables (e.g., primary vs. metastatic status). To do so, one might consider fitting sinusoidal models (harmonic regression) to gene expression values across samples, even in the absence of time-point annotation.
+
+However, applying harmonic regression without known or replicated time points is inherently problematic:
+
+    Pseudo-time assignment (i.e., randomly assigning each sample a time point from 0–24h) introduces artificial structure, which may result in fitting noise rather than true rhythmicity.
+
+    Without temporal replicates or entrainment, any signal identified is likely a statistical artifact.
+
+In this analysis, we demonstrate that:
+
+    Fitting a harmonic regression model using pseudo-time on melanoma cell lines from DepMap results in low R^2^ values across known circadian genes, confirming that random time assignment fits random noise.
+
+    To circumvent this, we propose an alternative strategy: projecting DepMap cell lines into the expression space of a time-annotated circadian reference dataset (GSE161566) using a nearest-centroid approach.
+
+    By comparing test samples to phase-annotated reference centroids, we can infer approximate circadian phase, even in the absence of actual time point data.
+
+#### Circadian Rhythm Genes
+
+We use the following cancer-related circadian rhythm-related genes for our analysis:
+
+```{r}
+known_circadian_genes <- c(
+  "RORA", "PER3", "PER1", "CRY2", "RORB", "PER2", "NR1D2", "RORC", "CRY1",
+  "ARNTL", "NPAS2", "CLOCK", "NR1D1", "ARNTL2")
+```
+
+#### Load Depmap sample metadata
+
+```{r eval=FALSE}
+## access depmap
+eh <- ExperimentHub()
+query(eh, "depmap")
+
+# get the Depmap metadata
+eh[["EH7558"]] %>%
+  dplyr::filter(grepl("melanoma", lineage_subtype) | ## only melanoma cell lines!
+                  grepl("elanoma", Cellosaurus_NCIt_disease) |
+                  grepl("elanoma", subtype_disease) | 
+                  grepl("elanoma", cell_line),
+                !is.na(primary_or_metastasis)) %>%
+  dplyr::select(-contains("issues")) %>%
+  dplyr::mutate(primary_or_metastasis_binary = case_when(
+    primary_or_metastasis == "Primary" ~ 0,
+    primary_or_metastasis == "Metastasis" ~ 1)) %>%
+  as.data.frame() -> melanoma_metadata_22Q2
+
+rownames(melanoma_metadata_22Q2) <- melanoma_metadata_22Q2$depmap_id
+
+saveRDS(object = melanoma_metadata_22Q2, file = "./depmap_data/melanoma_metadata_22Q2.rds")
+```
+
+```{r}
+melanoma_metadata_22Q2 <- readRDS(file = "./depmap_data/melanoma_metadata_22Q2.rds")
+```
+
+#### Load Depmap TPM gene count data
+
+```{r eval=FALSE}
+eh[["EH7556"]] %>%
+  dplyr::filter(depmap_id %in% melanoma_metadata_22Q2$depmap_id) %>% ## only melanoma cell lines!
+  dplyr::select(depmap_id, rna_expression, gene_name) %>%
+  tidyr::pivot_wider(names_from = depmap_id,
+                     values_from = rna_expression) %>%
+  dplyr::filter(!duplicated(gene_name)) %>%
+  tibble::column_to_rownames(var = "gene_name") %>%
+  as.data.frame() -> TPM_22Q2_wide
+
+saveRDS(object = TPM_22Q2_wide, file = "./depmap_data/TPM_22Q2_wide.rds")
+```
+
+```{r}
+TPM_22Q2_wide <- readRDS(file = "./depmap_data/TPM_22Q2_wide.rds")
+
+cat("Dimension before filtering:", dim(TPM_22Q2_wide), "\n")
+```
+
+#### Filter TPM gene count data
+
+We perform minimal filtering, to filter out genes with all-zero counts (e.g., we
+keep genes with total counts > 0 across all samples).
+
+```{r}
+keep_genes <- rowSums(TPM_22Q2_wide) > 0
+filtered_data <- TPM_22Q2_wide[keep_genes, ]
+cat("Dimension after filtering:", dim(filtered_data), "\n")
+```
+
+## Visualizations
+
+### Heatmap of Circadian Gene Expression
+
+We'll plot the TPM expression of circadian-related genes, to give a general
+impression of the variation of these genes the Depmap cell line data. We 
+observe at first glance that there doesn't appear to be much variation of these
+genes across any of the annotations. It's possible that some of the circadian
+gene variation may have been removed via ComBat batch correction by the Broad
+Institute, but this is difficult to determine.
+
+```{r}
+filtered_data %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "gene_name") %>%
+  dplyr::filter(gene_name %in% known_circadian_genes) %>%
+  tibble::column_to_rownames(var = "gene_name") %>%
+  t() %>% as.data.frame() %>%
+  tibble::rownames_to_column(var = "depmap_id") %>%
+  dplyr::left_join(melanoma_metadata_22Q2, by = "depmap_id") %>%
+  as.data.frame() -> expr_ann_df
+
+## make column annotations
+data.frame(status = expr_ann_df$primary_or_metastasis,
+           subtype = expr_ann_df$subtype_disease,
+           site = expr_ann_df$sample_collection_site,
+           row.names = expr_ann_df$depmap_id) -> sample_col
+
+expr_ann_df %>%
+  dplyr::select(depmap_id:RORB) %>%
+  tibble::column_to_rownames(var = "depmap_id") %>%
+  t() %>%
+  pheatmap::pheatmap(
+    annotation_col = sample_col,
+    show_colnames = FALSE,
+    border_color = NA,
+    fontsize = 7,
+    main = paste0("Heatmap of TPM expression of circadian rhythm-related ",
+                  "genes in melanoma cell lines"))
+```
+
+### PCA Circadian Gene Expression Matrix
+
+Perform PCA on a bulk RNA-seq expression matrix filtered to include only
+circadian genes, and to visualize the result using ggplot2
+
+```{r warning=FALSE, message=FALSE}
+filtered_data %>%
+  as.data.frame() %>%
+  tibble::rownames_to_column(var = "gene_name") %>%
+  dplyr::filter(gene_name %in% known_circadian_genes) %>%
+  tibble::column_to_rownames(var = "gene_name") %>%
+  t() %>% as.data.frame() -> expr_df
+
+# 2. Transpose for PCA (samples must be rows, genes must be columns)
+# expr_for_pca <- t(expr_df)
+
+# 3. Perform PCA (center and scale recommended for normalized data)
+pca_result <- prcomp(expr_df, center = TRUE, scale. = TRUE)
+
+# 4. Extract the PCA results for plotting
+pca_df <- as.data.frame(pca_result$x)
+pca_df$Sample <- rownames(pca_df)  # Keep sample names
+
+# 5. Plot PC1 vs PC2 using ggplot2
+pca_df %>% 
+  tibble::rownames_to_column(var = "depmap_id") %>%
+  dplyr::left_join(melanoma_metadata_22Q2, by = "depmap_id") %>%
+  ggplot(aes(x = PC1, y = PC2, color = primary_or_metastasis)) +
+    geom_point(size = 2, alpha = 0.7) +
+    geom_text_repel(aes(label = Sample)) +
+    labs(title = "PCA of Circadian Gene Expression in Depmap Melanoma Cell Lines",
+         x = paste0("PC1 (", round(summary(pca_result)$importance[2, 1] * 100, 1), "% variance)"),
+         y = paste0("PC2 (", round(summary(pca_result)$importance[2, 2] * 100, 1), "% variance)")) +
+    theme_minimal()
+```
+
+## Performing a simple harmonic regression on circadian expression data
+
+### Define a Harmonic Regression Function
+
+A single harmonic (period = 24h) can be modeled as:
+
+$$
+y(t) = \beta_0 + \alpha \sin\left(\frac{2\pi}{24} t\right) + \gamma \cos\left(\frac{2\pi}{24} t\right) + \varepsilon
+$$
+
+You can extend it to multiple harmonics (e.g., second harmonic with period = 12h),
+but using the "24 hour clock" is more simple to model.
+
+### Set Up a Pseudo-Time Vector
+
+Since you don't have recorded sampling times, we'll randomly assign a pseudo-time
+(0–24h) for each sample. In reality, these times are made-up.
+
+```{r}
+# Let's assume your data frame is called 'filtered_data'
+# Rows = genes, Columns = cell lines / samples.
+
+# For demonstration, let's make it a matrix
+expr_mat <- as.matrix(t(expr_df))  # e.g., TPM of circadian genes
+n_samples <- ncol(expr_mat)
+
+# Create a random pseudo-time vector from 0 to 24 (hours)
+set.seed(123)  # for reproducibility
+pseudo_time <- runif(n_samples, min = 0, max = 24)
+```
+
+#### Creating Regressor Columns
+
+Regressor column equations are shown below:
+
+Sine Regressor Term (24-hour period):
+
+$$
+\text{sin}_{24}(t) = \sin\left( \frac{2\pi}{24} t \right)
+$$
+
+Cosine Regressor Term (24-hour period):
+
+$$
+\text{cos}_{24}(t) = \cos\left( \frac{2\pi}{24} t \right)
+$$
+Build the design matrix for a single harmonic with period 24:
+
+```{r}
+omega <- 2 * pi / 24
+
+sin_24 <- sin(omega * pseudo_time)
+cos_24 <- cos(omega * pseudo_time)
+
+# We combine them in a data frame for use in lm()
+harm_design <- data.frame(
+  sin_24 = sin_24,
+  cos_24 = cos_24
+)
+```
+
+### Fitting a Linear Model for Each Gene
+
+We'll write a function that:
+
+    Takes a vector of gene expression across samples,
+
+    Fits lm(gene_expr ~ sin_24 + cos_24, data = harm_design),
+
+    Extracts amplitude & phase from the coefficients.
+
+Amplitude equation:
+
+$$
+\text{amplitude} = \sqrt{\alpha^2 + \gamma^2}
+$$
+
+Phase equation:
+
+$$
+\text{phase} = \mathrm{atan2}(\alpha, \gamma)
+$$
+
+Phase Conversion to Hours (24-hour cycle): 
+
+$$
+\text{phase (hours)} = \left( \frac{\text{phase (radians)}}{2\pi} \right) \times 24
+$$
+Create function to fit the harmonic model on the expression data:
+
+```{r}
+fit_harmonic <- function(y, sin_col, cos_col) {
+  # y = numeric vector of expression (length = n_samples)
+  # sin_col, cos_col = numeric vectors of the same length
+  lmfit <- lm(y ~ sin_col + cos_col)
+  coefs <- coef(lmfit)
+  
+  # coefs[1] = intercept, coefs[2] = sin coefficient, coefs[3] = cos coefficient
+  alpha <- coefs[2]
+  gamma <- coefs[3]
+  
+  amplitude <- sqrt(alpha^2 + gamma^2)
+  # use atan2 to determine correct quadrant for phase
+  phase <- atan2(alpha, gamma)  # in radians
+  
+  # We'll return a list with some stats
+  return(list(
+    intercept = coefs[1],
+    alpha = alpha,       # sin coefficient
+    gamma = gamma,       # cos coefficient
+    amplitude = amplitude,
+    phase_radians = phase,
+    phase_hours = (phase / (2*pi)) * 24  # convert from radians to hours in a 24h cycle
+  ))
+}
+```
+
+### Apply This Function to Each Gene
+
+We can loop over rows of `expr_mat`. For each gene (row), we extract the
+expression across samples, then fit the harmonic model using our function.
+
+```{r}
+# Prepare results storage
+res_list <- vector("list", nrow(expr_mat))
+gene_names <- rownames(expr_mat)
+
+for (i in seq_len(nrow(expr_mat))) {
+  y_i <- expr_mat[i, ]  # expression vector for gene i
+  res_list[[i]] <- fit_harmonic(y_i, sin_24, cos_24)
+}
+
+# Combine results into a data frame
+harm_results <- do.call(rbind, lapply(res_list, as.data.frame))
+harm_results <- cbind(gene = gene_names, harm_results)
+head(harm_results)
+```
+
+`harm_results` now has columns:
+
+    gene: gene ID
+
+    intercept, alpha, gamma: LM coefficients
+
+    amplitude: α2+γ2α2+γ2
+
+`phase_radians`, `phase_hours`: estimated phase (in radians and hours)
+
+### Inspecting the Fits
+
+We observe:
+
+    Random or low amplitude for many genes = The data do not strongly fit a sinusoidal pattern.
+
+    Phase values scattered randomly = No real circadian structure.
+    
+```{r}
+hist(harm_results$amplitude, breaks = 30,
+     main = "Distribution of Harmonic Amplitudes",
+     xlab = "Amplitude (sqrt(alpha^2 + gamma^2))")
+```
+    
+```{r}
+hist(harm_results$phase_hours, breaks = 24,
+     main = "Distribution of Fitted Phase (hours)",
+     xlab = "Phase (hours)")
+```
+
+### Model Diagnostics
+
+You can examine the R-squared of each fit to see how well (or poorly) the
+sinusoidal model explains the data:
+
+```{r}
+get_rsq <- function(y, sin_col, cos_col) {
+  m <- summary(lm(y ~ sin_col + cos_col))
+  return(m$r.squared)
+}
+
+r2_values <- apply(expr_mat, 1, get_rsq, sin_col = sin_24, cos_col = cos_24)
+# View(as.data.frame(r2_values))
+
+hist(r2_values, breaks = 30, main = "Distribution of R-squared", xlab = "R-squared")
+```
+
+#### How to interpret these R^2^ values
+
+Low R^2^ values across the board
+
+    All values are < 0.1 (i.e., < 10% of variance explained).
+
+    The highest is NPAS2 at ~0.088 (8.8%), and most are below 5%.
+
+    This strongly suggests that a sinusoidal model does not explain the variation in gene expression across your samples.
+
+If the data is purely noise (and there's no real time structure), you'd expect low R-squared across most genes.
+
+But again, with only one measurement per sample at a random time, you're typically just fitting noise.
+
+Random pseudo-times lead to noise-fitting
+
+    Remember: you do not have actual sampling times. The time variable used in your model is random, so any apparent "fit" is just chance alignment.
+
+    Low R² values are consistent with the hypothesis that circadian structure is absent or washed out due to:
+
+        Random sampling times.
+
+        No temporal replicates.
+
+        Prior batch correction (e.g., via ComBat) possibly removing subtle oscillatory signals.
+
+        Cell lines not being entrained (a common issue in vitro).
+        
+The outlier (NPAS2)
+
+    NPAS2 has the highest R² (~0.088), but this is still too low to be considered strong.
+
+    In real circadian datasets with known time points, R² for strong clock genes like PER2, ARNTL, NR1D1 can exceed 0.5 or more.
+
+#### Take-Home Message
+
+    The code above demonstrates how to manually build a harmonic regression for each gene using base R (lm).
+
+    Because you have no replicate time points and random sample times with no actual time data, your "phase" estimates are effectively random or noise-fitting.
+
+    This approach proves that forcing a sinusoidal model in such a setting is likely not biologically meaningful.
+
+In summary: You can indeed fit a sinusoid with random time points for each sample, but the resulting amplitude/phase will not reflect true circadian patterns, rather, you're modeling random noise.
+
+## Building a reference circadian dataset
+
+To overcome the limitations of applying harmonic regression to time-agnostic datasets, we leverage external, time-annotated circadian transcriptomic datasets as a reference for inferring phase. Specifically, we will utilize [GSE161566](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE161566), a publicly available RNA-seq dataset profiling circadian gene expression across multiple time points (24 to 70 hours) in human intestinal organoids. This dataset provides a high-resolution temporal map of rhythmic gene expression under controlled conditions. By treating each time point in the reference as a "template" of circadian phase, we can project our DepMap melanoma cell line TPM data into this reference space. This is achieved by computing correlations between the expression profiles of DepMap samples and reference time-point centroids derived from `GSE161566`. The time point with the highest similarity is interpreted as the inferred circadian phase of each cell line. This approach allows us to estimate rhythmic phase indirectly, without requiring time-stamped or replicated samples in the test data, while grounding our analysis in a biologically relevant reference system.
+
+### CircaKB: A Comprehensive Knowledgebase of Circadian Genes Across Multiple Species
+
+We chose the `GSE161566` dataset out of the list of Homo sapiens circadian-related
+datasets found on [CircaKB](https://cdsic.njau.edu.cn/CircaKB/#/home) because it
+is also RNAseq and also TPM transformed. While other datasets more closely resembling
+melanoma cell lines are available, they are microarray data, which can be difficult
+to compare to RNAseq. The metadata of table of circadian-related datasets available
+on CircaKB is shown below:
+
+```{r}
+readxl::read_excel(path = "./data/circakb_geo_homo_sapien_circadian_datasets.xlsx") %>%
+  as.data.frame() -> circakb_geo_homo_sapien_circadian_datasets
+
+DT::datatable(circakb_geo_homo_sapien_circadian_datasets)
+```
+
+Load the GEO GSE161566 data:
+
+```{r message=FALSE, warning=FALSE}
+## annotation metadata?
+# readxl::read_excel("./GEO_data/GSE161566_Human-enteroids_RAIN-24h_EMBO.xlsx") %>%
+#   dplyr::mutate(gene_symbol = gsub(".*?:", "", CycID)) %>%
+#   dplyr::filter(gene_symbol %in% known_circadian_genes) %>%
+#   dplyr::select(gene_symbol, everything()) %>%
+#   as.data.frame() -> GSE161566_Human_enteroids_RAIN_24h_EMBO
+# View(GSE161566_Human_enteroids_RAIN_24h_EMBO)
+
+readr::read_csv("./GEO_data/GSE161566_processed-data-file_TPM.csv") %>%
+  dplyr::rename(gene_symbol = Symbol) %>%
+  dplyr::filter(gene_symbol %in% known_circadian_genes) %>%
+  dplyr::select(-Ensembl) %>%
+  tibble::column_to_rownames(var = "gene_symbol") %>%
+  as.data.frame() -> GSE161566_processed_data_file_TPM
+# View(GSE161566_processed_data_file_TPM)
+```
+
+### PCA of time-annotated GSE161566 data colored by 24-hour phase
+
+We plot the PCA of the time-annotated GSE161566 data, and convert the time
+annotation to the 24-hour phase. We observe that there does appear to be a 
+temporal expression pattern in circadian genes in this dataset.
+
+```{r}
+# Transpose: rows = samples, cols = genes
+pca_res <- prcomp(t(GSE161566_processed_data_file_TPM), center=TRUE, scale.=TRUE)
+
+as.data.frame(pca_res$x) %>%
+  tibble::rownames_to_column("sample_id") %>%
+  dplyr::mutate(phase = as.integer(gsub(".*?_", "", sample_id)) %% 24) %>%
+  ggplot(aes(x = PC1, y = PC2, color = phase)) +
+    geom_point(size = 2) +
+    geom_text_repel(aes(label = sample_id), size = 3, force = TRUE) +
+    theme_minimal() +
+    labs(title="Joint PCA of GSE161566 (Circadian Genes)",
+         x=paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100,1), "%)"),
+         y=paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100,1), "%)"))
+```
+
+
+Explanation of Key Steps:
+
+    Load Reference Data (GSE161566):
+
+        Already in TPM, so no need for further count-to-TPM conversion.
+
+        Extract numeric time points from sample IDs like "CH_24" → time_point = 24.
+
+    Annotate & Melt:
+
+        We reshape the data so each row is (sample, gene, expression) and join with the time_point.
+
+    Build Centroid Matrix:
+
+        We group by (time_point, gene) and take the average expression.
+
+        In GSE161566 with 1 replicate per time point, the centroid is effectively the sample itself.
+
+    Load Test (Cell Line) Data:
+
+        Already presumably in TPM or similar normalized values.
+
+        Subset to common genes.
+
+    Nearest-Centroid Phase Inference:
+
+        For each test sample, correlate its expression vector to each reference time point’s expression vector.
+
+        The reference time point with the highest correlation is assigned as the "predicted phase."
+
+    (Optional) Joint PCA:
+
+        Combine the reference "samples" (the time points) with the test cell lines in one matrix.
+
+        Transpose so rows = samples, columns = genes.
+
+        Perform prcomp to visualize how cell lines cluster relative to the reference circadian cycle.
+
+### Circadian phase estimates of Depmap using time-annotated GSE161566 data
+
+```{r}
+################################################################################
+# 1) REFERENCE DATA (GSE161566) -- TPM with column names like "CH_24","CH_26", etc.
+################################################################################
+
+# "GSE161566_processed_data_file_TPM" is assumed loaded:
+#   rows = genes, columns = samples, values = TPM
+
+# Let's check dimension:
+# cat("Reference data dimensions:", dim(GSE161566_processed_data_file_TPM), "\n")
+# cat("Sample of colnames:\n")
+# head(colnames(GSE161566_processed_data_file_TPM))
+
+# Extract numeric time points from column names, e.g. "CH_24" => 24
+# We'll create a named vector of time points
+extract_time_from_name <- function(col_name) {
+  # Suppose the format is "CH_XX" or "CH_XXX"
+  # We'll remove "CH_" and convert what's left to numeric
+  as.numeric(sub("CH_", "", col_name))
+}
+
+ref_colnames <- colnames(GSE161566_processed_data_file_TPM)
+time_points <- sapply(ref_colnames, extract_time_from_name)
+
+# We'll store this in a small metadata frame
+reference_meta <- data.frame(
+  sample_id = ref_colnames,
+  time_point = time_points,
+  stringsAsFactors = FALSE
+)
+
+# OPTIONAL: if you have a reason to do a small offset or reorder, do it here
+
+################################################################################
+# 2) ANNOTATE REFERENCE DATA WITH TIME AND MELT TO LONG FORMAT
+################################################################################
+
+# Transpose so each row = sample, each column = gene
+ref_data_t <- t(GSE161566_processed_data_file_TPM)
+
+# Build a data frame with time_point
+as.data.frame(ref_data_t) %>%
+  tibble::rownames_to_column("sample_id") %>%
+  dplyr::left_join(reference_meta, by = "sample_id") %>% 
+  as.data.frame() -> ref_combined_df # join the time_point info
+
+# Now we have columns = genes, plus sample_id, time_point
+
+# Convert to long format
+ref_combined_df %>%
+  tidyr::gather(key = "gene", value = "expression", -sample_id, -time_point) %>% 
+  as.data.frame() -> ref_long
+
+################################################################################
+# 3) CREATE TIME-POINT "CENTROIDS" (In this dataset, 1 replicate/time => trivial)
+################################################################################
+
+ref_long %>%
+  dplyr::group_by(time_point, gene) %>%
+  dplyr::summarize(mean_expr = mean(expression, na.rm = TRUE)) %>%
+  dplyr::ungroup() %>% 
+  as.data.frame() -> ref_time_centroids
+
+# Convert back to wide format: rows = time_point, columns = genes
+ref_time_centroids %>%
+  tidyr::spread(key = gene, value = mean_expr) %>% 
+  as.data.frame() -> ref_time_wide
+
+time_centroid_matrix <- as.matrix(ref_time_wide[, -1])
+rownames(time_centroid_matrix) <- ref_time_wide$time_point
+
+# cat("Dimensions of time_centroid_matrix:", dim(time_centroid_matrix), "\n")
+# head(rownames(time_centroid_matrix))
+
+################################################################################
+# 4) LOAD THE CELL LINE (TEST) EXPRESSION DATA (expr_matx)
+################################################################################
+
+# Suppose your cell line data frame is called "expr_matx" in TPM
+# with rows = genes, columns = cell lines. If it's already in memory, proceed:
+# e.g. expr_matx <- read.csv("my_cell_lines.csv", row.names=1)
+
+# cat("Dimensions of cell line data (expr_matx):", dim(expr_mat), "\n")
+# cat("Column names in expr_mat:\n")
+# head(colnames(expr_mat))
+
+# Ensure it's a matrix
+test_expr <- as.matrix(expr_mat)
+
+################################################################################
+# 5) OPTIONAL: SUBSET TO COMMON GENES
+################################################################################
+
+common_genes <- intersect(colnames(time_centroid_matrix), rownames(test_expr))
+
+# cat("Number of overlapping circadian genes:", length(common_genes), "\n")
+
+ref_sub  <- time_centroid_matrix[, common_genes, drop=FALSE]
+test_sub <- test_expr[common_genes, , drop=FALSE]
+
+################################################################################
+# 6) INFER CIRCADIAN PHASE BY NEAREST-CENTROID CORRELATION
+################################################################################
+
+predict_circadian_phase <- function(sample_vector, ref_centroids) {
+  # ref_centroids: rows = time_points, cols = genes
+  # sample_vector: expression of the same genes in the test sample
+  cor_values <- apply(ref_centroids, 1, function(x) cor(x, sample_vector, use="pairwise.complete.obs"))
+  best_time  <- names(which.max(cor_values))
+  return(best_time)
+}
+
+test_samples <- colnames(test_sub)
+phase_estimates <- sapply(test_samples, function(samp) {
+  sample_vec <- test_sub[, samp]
+  predict_circadian_phase(sample_vec, ref_sub)
+})
+
+cat("Predicted circadian time for each cell line sample:\n")
+print(phase_estimates)
+```
+
+The predicted circadian phases for the DepMap melanoma cell lines, estimated by correlating each sample to reference time points in GSE161566 are predominantly clustered around a narrow subset of time points, particularly "24", "26", "30", and "34", with a small tail extending to later time points like "46", "52", and "48". This distribution suggests limited diversity in circadian phase among the cell lines, consistent with the expectation that in vitro melanoma cell lines lack entrainment and do not exhibit strong circadian oscillations. The non-uniform spread also indicates that the nearest-centroid inference may be driven by other dominant transcriptional features (e.g., baseline expression similarities), rather than true phase differences.
+
+### Distribution of Predicted Circadian Phases
+
+We plot the predicted circadian time for each Depmap cell line:
+
+```{r}
+# Convert phase estimates to a data frame
+phase_df <- data.frame(
+  depmap_id = names(phase_estimates),
+  predicted_phase = as.numeric(phase_estimates)
+)
+
+# Bar plot
+ggplot(phase_df, aes(x = factor(predicted_phase, levels = sort(unique(predicted_phase))))) +
+  geom_bar(fill = "#6A00A8FF") +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Predicted Circadian Phases of Depmap Cell Line",
+    x = "Predicted Phase (hours)",
+    y = "Number of Cell Lines"
+  )
+```
+
+### Distribution of Predicted Circadian Phases (Circular, 24-hour cycle)
+
+We plot the predicted circadian time for each Depmap cell line using a circular,
+24-hour cycle:
+
+```{r}
+# Normalize phase into radians for circular layout
+phase_df$angle <- (as.numeric(phase_df$predicted_phase) / 24) * 2 * pi
+
+ggplot(phase_df, aes(x = angle)) +
+  geom_histogram(bins = 24, fill = "#FCA636FF", color = "black") +
+  coord_polar(start = 0) +
+  theme_minimal() +
+  scale_x_continuous(
+    breaks = seq(0, 2*pi, length.out = 9),
+    labels = seq(0, 24, by = 3)
+  ) +
+  labs(
+    title = "Circadian Phase Distribution (Circular View)",
+    x = "Circadian Phase (hours)",
+    y = "Cell Count"
+  )
+```
+
+### Joint PCA of Depmap and time-annotated GSE161566 data
+
+```{r warning=FALSE, message=FALSE}
+################################################################################
+# 7) (OPTIONAL) PERFORM A JOINT PCA WITH REFERENCE + TEST SAMPLES
+################################################################################
+# You may or may not want to do batch correction. We'll omit that for simplicity.
+
+# Combine ref + test in a single matrix. 
+# For reference "samples" = time points in time_centroid_matrix
+#   => Actually, we have time_centroid_matrix as rows=timepoints, columns=genes
+# We need to transpose it back if we want each column as a "sample"
+
+# But if your reference had multiple replicates/time, you might store them differently.
+# Here, let's do a simpler approach: treat each time point in GSE161566 as one "sample."
+
+# We'll call the reference samples "REF_CH_XX"
+ref_sample_names <- paste0("REF_CH_", rownames(ref_sub))
+ref_for_pca <- t(ref_sub)  # Now rows=genes, columns=time_points => we want genes x timepoints
+colnames(ref_for_pca) <- ref_sample_names
+
+# The test data is genes x cell lines
+test_for_pca <- test_sub  # genes x samples
+# cat("Reference for PCA:", dim(ref_for_pca), "\n")
+# cat("Test for PCA:", dim(test_for_pca), "\n")
+
+# Combine (by columns) if row ordering matches (should be genes in rows)
+# Ensure rownames are identical in same order
+identical(rownames(ref_for_pca), rownames(test_for_pca))  # Should be TRUE if we did everything right
+
+joint_expr <- cbind(ref_for_pca, test_for_pca)
+
+# Transpose: rows = samples, cols = genes
+pca_res <- prcomp(t(joint_expr), center=TRUE, scale.=TRUE)
+
+as.data.frame(pca_res$x) %>%
+  tibble::rownames_to_column("sample_id") %>%
+  dplyr::mutate(data_set = ifelse(
+    grepl("^REF_CH_", sample_id), "GEO Reference", "Depmap cell line")) %>%
+  ggplot(aes(x = PC1, y = PC2, color = data_set)) +
+    geom_point(size = 2) +
+    geom_text_repel(aes(label = sample_id), size = 3, force = TRUE) +
+    theme_minimal() +
+    labs(title="Joint PCA of GSE161566 & Depmap Cell Line Data (Circadian Genes)",
+         x=paste0("PC1 (", round(summary(pca_res)$importance[2,1]*100,1), "%)"),
+         y=paste0("PC2 (", round(summary(pca_res)$importance[2,2]*100,1), "%)"))
+```
+
+#### Interpretation of PCA
+
+    PC1 captures the temporal structure in the reference data:
+
+        The spread of GSE161566 samples along PC1 indicates that PC1 likely represents circadian phase or time-of-day variation, which is expected since these samples are ordered by time (CH_24 to CH_70).
+
+        This distribution validates that the known circadian oscillations dominate the variance captured by PC1 in the reference dataset.
+
+    Cell line samples lack temporal structure:
+
+        The tight clustering of DepMap samples suggests limited or no variation along the circadian axis captured by PC1.
+
+        This is consistent with the expectation that melanoma cell lines are not synchronized, and thus do not express circadian patterns in a coordinated or time-ordered way.
+
+    Biological or technical differences drive PC2 and beyond:
+
+        The GSE161566 samples vary more widely across multiple PCs, while the DepMap samples cluster compactly in higher dimensions, suggesting a homogeneous population (with respect to circadian rhythm).
+
+        Additionally, it may also reflect batch effects, differences in tissue origin (intestinal organoids vs. melanoma), or other experimental conditions.
+
+#### Key Takeaways
+
+    This PCA result supports the validity of the GSE161566 dataset as a circadian reference: it encodes temporal information visibly.
+
+    It also confirms the absence of synchronized circadian structure in DepMap melanoma cell lines, aligning with expectations for in vitro systems not subjected to entrainment cues (e.g., light-dark cycles, serum shocks).
+
+    This justifies the use of nearest-centroid phase inference rather than harmonic regression on the test set, and cautions against overinterpreting phase estimates from unsynchronized bulk data.
+
+## Summary
+
+In this analysis, we explored the potential for estimating circadian phase in time-agnostic melanoma cell line data from the DepMap project. First, we tested whether harmonic regression could uncover rhythmic patterns in circadian gene expression using randomly assigned pseudo-time points. As expected, this approach yielded uniformly low R^2^ values across genes, demonstrating that without true temporal information or entrainment, harmonic models largely fit noise. To address this limitation, we leveraged a publicly available circadian reference dataset, GSE161566, which profiled gene expression in human intestinal organoids across a 24–70 hour time course. By constructing time-point centroids from this dataset, we applied a nearest-centroid correlation method to estimate the circadian phase of each DepMap cell line sample. A joint PCA of the reference and test data revealed clear temporal structure in the GSE161566 samples along PC1, while the DepMap samples clustered tightly, consistent with a lack of rhythmicity. These findings validate GSE161566 as a circadian reference and suggest that melanoma cell lines, in the absence of synchronization, do not exhibit robust circadian gene expression patterns. Our approach demonstrates the utility of reference-based phase inference when temporal data is missing, while also highlighting the limitations of applying rhythmic models to unsynchronized in vitro systems.
+
+```{r}
+sessionInfo()
+```

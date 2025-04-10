@@ -15,7 +15,8 @@ use_python("/usr/bin/python3")  # Specify your Python path if needed
 
 # Step 1: Load Data
 file_path <- "~/tmp/circadian_melanoma/depmap_data/"
-depmap_mae <- readRDS(file = paste0(file_path, "depmap_MAE_2025-03-19.rds"))
+# depmap_mae <- readRDS(file = paste0(file_path, "depmap_MAE_2025-03-19.rds"))
+depmap_mae <- readRDS(file = paste0(file_path, "depmap_MAE_2025-03-18.rds"))
 
 # Step 2: Prepare Data for MOFA2, Align samples across assays
 depmap_mae <- intersectColumns(depmap_mae)

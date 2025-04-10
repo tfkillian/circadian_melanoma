@@ -1,0 +1,59 @@
+---
+title: "Circadian Phase Estimation of Depmap Melanoma Cell Line Samples"
+author: "Theo Killian"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    nature:
+      countIncrementalSlides: false
+      slideNumberFormat: "%current% / %total%"
+---
+
+```{r setup, include=FALSE}
+# Load libraries & set chunk options
+suppressPackageStartupMessages(library("dplyr"))
+library("tidyr")
+library("tibble")
+library("ggplot2")
+library("viridis")
+library("stringr")
+library("ggrepel")
+library("ggpubr")
+library("readxl")
+library("depmap")
+library("ExperimentHub")
+library("pheatmap")
+library("DT")
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  warning  = FALSE,
+  message  = FALSE
+)
+# Custom color palette
+my_cols <- c("#0D0887FF", "#6A00A8FF", "#B12A90FF", "#E16462FF", "#FCA636FF", "#F0F921FF")
+```
+
+--
+
+## Introduction
+
+- In circadian biology, estimating the **circadian phase** of biological samples provides insight into the temporal regulation of gene expression. 
+- Large-scale resources like **DepMap** often lack time-of-day annotations, making it difficult to detect rhythmic patterns.
+
+**We demonstrate:**
+- **Harmonic regression** with random pseudo-times (0–24h) → primarily fits noise.
+- **Reference-based approach** using a time-annotated circadian dataset (**GSE161566**) to infer approximate phase.
+
+---
+
+```{r}
+known_circadian_genes <- c(
+  "RORA", "PER3", "PER1", "CRY2", "RORB", "PER2", "NR1D2", "RORC", "CRY1",
+  "ARNTL", "NPAS2", "CLOCK", "NR1D1", "ARNTL2")
+
+knitr::kable(known_circadian_genes)
+```
+
+
+---
